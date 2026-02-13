@@ -124,19 +124,16 @@
       
       <a-sky color="#87CEEB"></a-sky>
 
-      <!-- Player Rig -->
-      <a-entity id="player-rig" position="0 0.05 0">
+      <a-entity id="player-rig" position="0 0.1 0">
         
-        <!-- Player Model with animation mixer -->
         <a-entity id="player-model" 
                   gltf-model="#player" 
-                  scale="0.0072 0.0072 0.0072" 
+                  scale="0.0144 0.0144 0.0144" 
                   rotation="0 180 0"
                   animation-mixer="clip: idle; crossFadeDuration: 0.2">
         </a-entity>
 
-        <!-- Camera positioned behind the character -->
-        <a-entity id="camera-rig" position="0 1.8 -3">
+        <a-entity id="camera-rig" position="0 2.5 -5">
           <a-entity id="camera" 
                     camera 
                     look-controls="pointerLockEnabled: false; enabled: true"
@@ -144,6 +141,7 @@
           </a-entity>
         </a-entity>
       </a-entity>
+
 
       <!-- Lighting -->
       <a-entity light="type: ambient; intensity: 0.8"></a-entity>
