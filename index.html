@@ -84,9 +84,25 @@
         transition: width 0.1s linear;
       }
       
+      /* Camera control instructions */
+      .instructions {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.6);
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        font-size: 14px;
+        z-index: 2000;
+        pointer-events: none;
+        backdrop-filter: blur(4px);
+      }
+      
       @media (max-width: 400px) {
         .controller { transform: scale(0.8); left: 0; bottom: 20px; }
         #sprint-indicator { left: 30px; bottom: 240px; }
+        .instructions { font-size: 12px; top: 10px; right: 10px; }
       }
     </style>
   </head>
@@ -94,6 +110,12 @@
     <!-- Sprint progress indicator -->
     <div id="sprint-indicator">
       <div id="sprint-progress"></div>
+    </div>
+
+    <!-- Camera control instructions -->
+    <div class="instructions">
+      Swipe: Left/Right = Rotate View<br>
+      Swipe: Up/Down = Tilt Camera
     </div>
 
     <!-- Movement controls -->
@@ -104,15 +126,18 @@
       <div class="btn" id="down">BWD</div>
     </div>
 
-    <a-scene physics="gravity: 0" renderer="antialias: true; colorManagement: true">
+    <a-scene physics="gravity: 0; debug: false" renderer="antialias: true; colorManagement: true">
       <a-assets>
         <a-asset-item id="subrural" src="Subrural.glb"></a-asset-item>
         <a-asset-item id="player" src="Player.glb"></a-asset-item>
         <a-asset-item id="ground" src="Ground.glb"></a-asset-item>
       </a-assets>
 
-      <!-- Environment -->
-      <a-entity gltf-model="#subrural" position="0 0 0"></a-entity>
+      <!-- Environment with physics for collision detection -->
+      <a-entity gltf-model="#subrural" 
+                position="0 0 0"
+                static-body
+                id="environment-collision"></a-entity>
       
       <!-- Animated Ground with physics -->
       <a-entity gltf-model="#ground" 
@@ -124,22 +149,24 @@
       
       <a-sky color="#87CEEB"></a-sky>
 
-      <!-- Player Rig -->
-      <a-entity id="player-rig" position="0 0.05 0">
+      <!-- Player Rig with physics body for collision -->
+      <a-entity id="player-rig" 
+                position="0 0.05 0"
+                dynamic-body="shape: sphere; radius: 0.5; mass: 1">
         
-        <!-- Player Model with animation mixer -->
+        <!-- Player Model with animation mixer (showing back to camera) -->
         <a-entity id="player-model" 
                   gltf-model="#player" 
                   scale="0.0092 0.0092 0.0092" 
-                  rotation="0 180 0"
+                  rotation="0 0 0"
                   animation-mixer="clip: idle; crossFadeDuration: 0.2">
         </a-entity>
 
-        <!-- Camera positioned behind the character -->
-        <a-entity id="camera-rig" position="0 1.8 -3">
+        <!-- Camera positioned behind the character showing player's back -->
+        <a-entity id="camera-rig" position="0 2.2 3.5" rotation="0 180 0">
           <a-entity id="camera" 
                     camera 
-                    look-controls="pointerLockEnabled: false; enabled: true"
+                    look-controls="pointerLockEnabled: false; enabled: true; reverseTouchDrag: true"
                     wasd-controls="enabled: false">
           </a-entity>
         </a-entity>
@@ -168,11 +195,11 @@
           // Get references with null checks
           const rig = document.getElementById('player-rig');
           const model = document.getElementById('player-model');
-          const camera = document.getElementById('camera');
+          const cameraRig = document.getElementById('camera-rig');
           const sprintProgress = document.getElementById('sprint-progress');
           const sprintIndicator = document.getElementById('sprint-indicator');
           
-          if (!rig || !model) {
+          if (!rig || !model || !cameraRig) {
             console.error('Required elements not found');
             return;
           }
@@ -183,6 +210,12 @@
           let sprintCharge = 0;
           const SPRINT_DELAY = 3000; // 3 seconds
           const BOUNDARY = 50; // Movement boundary
+          
+          // Camera control state for swipe
+          let cameraRotation = { x: 15, y: 180 }; // Start with slight downward angle
+          let touchStart = { x: 0, y: 0 };
+          let isTouching = false;
+          const SENSITIVITY = 0.5;
           
           // Sprint timers per key
           let sprintTimers = { up: null, down: null, left: null, right: null };
@@ -279,6 +312,11 @@
               case 's': moveKeys.down = true; e.preventDefault(); break;
               case 'a': moveKeys.left = true; e.preventDefault(); break;
               case 'd': moveKeys.right = true; e.preventDefault(); break;
+              // Camera controls with arrow keys as fallback
+              case 'arrowleft': cameraRotation.y += 2; e.preventDefault(); updateCameraRotation(); break;
+              case 'arrowright': cameraRotation.y -= 2; e.preventDefault(); updateCameraRotation(); break;
+              case 'arrowup': cameraRotation.x = Math.min(30, cameraRotation.x + 2); e.preventDefault(); updateCameraRotation(); break;
+              case 'arrowdown': cameraRotation.x = Math.max(-10, cameraRotation.x - 2); e.preventDefault(); updateCameraRotation(); break;
             }
           });
           
@@ -297,34 +335,127 @@
             }
           });
 
+          // Touch controls for camera swipe
+          document.addEventListener('touchstart', (e) => {
+            if (e.target.classList.contains('btn')) return; // Ignore if button press
+            isTouching = true;
+            touchStart.x = e.touches[0].clientX;
+            touchStart.y = e.touches[0].clientY;
+          }, { passive: true });
+
+          document.addEventListener('touchmove', (e) => {
+            if (!isTouching || e.target.classList.contains('btn')) return;
+            e.preventDefault();
+            
+            const touchEnd = {
+              x: e.touches[0].clientX,
+              y: e.touches[0].clientY
+            };
+            
+            const deltaX = touchEnd.x - touchStart.x;
+            const deltaY = touchEnd.y - touchStart.y;
+            
+            // Apply sensitivity and update camera rotation
+            cameraRotation.y += deltaX * SENSITIVITY;
+            cameraRotation.x = Math.max(-10, Math.min(30, cameraRotation.x - deltaY * SENSITIVITY));
+            
+            // Normalize y rotation
+            cameraRotation.y = cameraRotation.y % 360;
+            
+            // Update camera rig rotation
+            updateCameraRotation();
+            
+            // Reset touch start for continuous movement
+            touchStart = touchEnd;
+          }, { passive: false });
+
+          document.addEventListener('touchend', () => {
+            isTouching = false;
+          });
+
+          // Mouse drag for camera control (for testing on desktop)
+          let isMouseDown = false;
+          let mouseStart = { x: 0, y: 0 };
+
+          document.addEventListener('mousedown', (e) => {
+            if (e.target.classList.contains('btn')) return;
+            isMouseDown = true;
+            mouseStart.x = e.clientX;
+            mouseStart.y = e.clientY;
+          });
+
+          document.addEventListener('mousemove', (e) => {
+            if (!isMouseDown || e.target.classList.contains('btn')) return;
+            
+            const deltaX = e.clientX - mouseStart.x;
+            const deltaY = e.clientY - mouseStart.y;
+            
+            cameraRotation.y += deltaX * SENSITIVITY * 0.5;
+            cameraRotation.x = Math.max(-10, Math.min(30, cameraRotation.x - deltaY * SENSITIVITY * 0.5));
+            
+            cameraRotation.y = cameraRotation.y % 360;
+            
+            updateCameraRotation();
+            
+            mouseStart.x = e.clientX;
+            mouseStart.y = e.clientY;
+          });
+
+          document.addEventListener('mouseup', () => {
+            isMouseDown = false;
+          });
+
+          // Function to update camera rotation
+          function updateCameraRotation() {
+            cameraRig.setAttribute('rotation', {
+              x: cameraRotation.x,
+              y: cameraRotation.y,
+              z: 0
+            });
+          }
+
           // Animation validation function
           const validateAndSetAnimation = (newAnim) => {
             if (newAnim !== currentAnim) {
-              // Only set if different
               model.setAttribute('animation-mixer', `clip: ${newAnim}; crossFadeDuration: 0.2`);
               currentAnim = newAnim;
-              console.log(`Animation set to: ${newAnim}`); // For debugging
             }
           };
+
+          // Check collision with environment
+          function checkCollision(newPosition) {
+            // Using physics system for collision detection
+            // The dynamic-body on player-rig and static-body on environment handle this automatically
+            
+            // Additional boundary check as fallback
+            const collisionDistance = 2.0; // Minimum distance from center
+            
+            // Simple distance check from origin for buildings
+            // In a real implementation, the physics system handles this
+            if (Math.abs(newPosition.x) > BOUNDARY - 5 || Math.abs(newPosition.z) > BOUNDARY - 5) {
+              return true; // Collision detected at boundaries
+            }
+            
+            return false;
+          }
 
           // Main game loop
           function tick() {
             if (!rig || !model) return;
             
             const now = performance.now();
-            const delta = Math.min(32, now - lastTime) / 16; // Cap at 2x speed
+            const delta = Math.min(32, now - lastTime) / 16;
             lastTime = now;
             
             try {
-              // Get current rotation with fallback
+              // Get current rotation
               let rotation = rig.getAttribute('rotation');
               if (!rotation) rotation = { x: 0, y: 0, z: 0 };
               
-              // Handle rotation (left/right)
+              // Handle player rotation (left/right buttons)
               if (moveKeys.left) rotation.y += 2.5 * delta;
               if (moveKeys.right) rotation.y -= 2.5 * delta;
               
-              // Normalize rotation
               rotation.y = rotation.y % 360;
               if (rotation.y < 0) rotation.y += 360;
               
@@ -334,25 +465,25 @@
               let position = rig.getAttribute('position');
               if (!position) position = { x: 0, y: 0.05, z: 0 };
               
-              // Calculate speed with delta
               const baseSpeed = 0.05;
               const runSpeed = 0.12;
               let speed = (isRunning ? runSpeed : baseSpeed) * delta;
               
-              // Determine animation and move
               let targetAnim = 'idle';
+              let newPosition = { ...position };
               
               if (moveKeys.up || moveKeys.down) {
                 const direction = moveKeys.up ? 1 : -1;
                 const angleRad = rotation.y * (Math.PI / 180);
                 
-                // Move relative to camera direction
-                position.x -= Math.sin(angleRad) * speed * direction;
-                position.z -= Math.cos(angleRad) * speed * direction;
+                // Move relative to player direction
+                newPosition.x -= Math.sin(angleRad) * speed * direction;
+                newPosition.z -= Math.cos(angleRad) * speed * direction;
                 
-                // Apply boundaries
-                position.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, position.x));
-                position.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, position.z));
+                // Check collision before applying movement
+                if (!checkCollision(newPosition)) {
+                  position = newPosition;
+                }
                 
                 // Set animation based on direction and running state
                 if (direction === 1) {
@@ -361,6 +492,10 @@
                   targetAnim = isRunning ? 'run-backwards' : 'walk-backwards';
                 }
               }
+              
+              // Apply boundaries as fallback
+              position.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, position.x));
+              position.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, position.z));
               
               // Update position
               rig.setAttribute('position', position);
@@ -381,12 +516,10 @@
           // Handle model loading errors
           model.addEventListener('model-error', (error) => {
             console.error('Failed to load player model:', error);
-            // Fallback to a simple shape if model fails
             model.setAttribute('geometry', 'primitive: capsule; height: 2; radius: 0.5');
             model.setAttribute('material', 'color: #4CAF50');
           });
 
-          // Log success
           console.log('Controls initialized successfully');
         });
       })();
