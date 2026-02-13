@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Mobile 3D Game</title>
+    <title>Mobile 3D Game - Smaller Player</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
@@ -10,14 +10,16 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
 
     <style>
-      /* Style for the Joystick Container */
       #joystick-zone {
         position: absolute;
-        bottom: 50px;
-        left: 50px;
-        width: 150px;
-        height: 150px;
+        bottom: 40px;
+        left: 40px;
+        width: 120px;
+        height: 120px;
         z-index: 10;
+        /* Simple visual cue for the touch area */
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
       }
     </style>
   </head>
@@ -31,18 +33,19 @@
         <a-asset-item id="player-glb" src="Player.glb"></a-asset-item>
       </a-assets>
 
-      <a-entity gltf-model="#world-glb" position="0 0 0"></a-entity>
-      <a-entity gltf-model="#floor-glb" position="0 0 0"></a-entity>
+      <a-entity gltf-model="#world-glb"></a-entity>
+      <a-entity gltf-model="#floor-glb"></a-entity>
 
       <a-entity id="rig" position="0 0 0">
         <a-entity id="player"
                   gltf-model="#player-glb"
+                  scale="0.25 0.25 0.25" 
                   position="0 0 0"
                   rotation="0 180 0"
                   animation-mixer="clip: idle; crossFadeDuration: 0.3">
         </a-entity>
         
-        <a-entity camera position="0 2.5 5" rotation="-20 0 0"></a-entity>
+        <a-entity camera position="0 0.8 1.5" rotation="-10 0 0"></a-entity>
       </a-entity>
 
       <a-light type="ambient" intensity="0.7"></a-light>
@@ -54,39 +57,34 @@
       const player = document.querySelector('#player');
       let isMoving = false;
 
-      // Initialize Joystick
       const manager = nipplejs.create({
         zone: document.getElementById('joystick-zone'),
         mode: 'static',
-        position: {left: '75px', bottom: '75px'},
-        color: 'white'
+        position: {left: '60px', bottom: '60px'},
+        color: 'cyan'
       });
 
       manager.on('move', (evt, data) => {
         if (!data.vector) return;
 
-        // 1. Play Run Animation if not already playing
         if (!isMoving) {
           player.setAttribute('animation-mixer', 'clip: run-forward');
           isMoving = true;
         }
 
-        // 2. Calculate Movement
-        const speed = 0.1;
+        // Speed adjusted for a smaller character scale
+        const speed = 0.05; 
         const forward = data.vector.y;
         const side = data.vector.x;
 
-        // Move the rig based on joystick direction
         rig.object3D.position.x += side * speed;
         rig.object3D.position.z -= forward * speed;
 
-        // 3. Rotate player mesh to face movement direction
         const angle = Math.atan2(side, forward);
         player.object3D.rotation.y = angle + Math.PI; 
       });
 
       manager.on('end', () => {
-        // Return to Idle when joystick is released
         player.setAttribute('animation-mixer', 'clip: idle');
         isMoving = false;
       });
